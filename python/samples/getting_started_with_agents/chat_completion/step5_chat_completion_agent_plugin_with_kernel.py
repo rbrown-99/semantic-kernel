@@ -2,6 +2,7 @@
 
 import asyncio
 from typing import Annotated
+import requests
 
 from semantic_kernel import Kernel
 from semantic_kernel.agents import ChatCompletionAgent, ChatHistoryAgentThread
@@ -9,92 +10,86 @@ from semantic_kernel.connectors.ai import FunctionChoiceBehavior
 from semantic_kernel.connectors.ai.open_ai import AzureChatCompletion
 from semantic_kernel.functions import KernelArguments, kernel_function
 
-"""
-The following sample demonstrates how to create a chat completion agent that
-answers questions about a sample menu using a Semantic Kernel Plugin. The Chat
-Completion Service is first added to the kernel, and the kernel is passed in to the
-ChatCompletionAgent constructor. Additionally, the plugin is supplied via the kernel.
-To enable auto-function calling, the prompt execution settings are retrieved from the kernel
-using the specified `service_id`. The function choice behavior is set to `Auto` to allow the
-agent to automatically execute the plugin's functions when needed.
-"""
+# --- Weather plugin using WeatherAPI.com ---
+class WeatherPlugin:
+    """Real-time weather information using WeatherAPI.com."""
+
+    def __init__(self, api_key: str):
+        self.api_key = api_key
+
+    @kernel_function(description="Get the current weather in a given city.")
+    def get_weather(self, city: Annotated[str, "The city to get weather info for."]) -> Annotated[str, "The current weather conditions."]:
+        url = f"http://api.weatherapi.com/v1/current.json?key={self.api_key}&q={city}"
+
+        try:
+            response = requests.get(url, timeout=10)
+            response.raise_for_status()
+            data = response.json()
+
+            condition = data["current"]["condition"]["text"]
+            temp_f = data["current"]["temp_f"]
+            feels_like = data["current"]["feelslike_f"]
+            humidity = data["current"]["humidity"]
+            wind_mph = data["current"]["wind_mph"]
+
+            return (
+                f"The weather in {city} is {condition} with a temperature of {temp_f}°F "
+                f"(feels like {feels_like}°F). Humidity is {humidity}% with winds at {wind_mph} mph."
+            )
+
+        except Exception as e:
+            return f"Sorry, I couldn't fetch the weather for {city}. Please try again later."
 
 
-# Define a sample plugin for the sample
-class MenuPlugin:
-    """A sample Menu Plugin used for the concept sample."""
-
-    @kernel_function(description="Provides a list of specials from the menu.")
-    def get_specials(self) -> Annotated[str, "Returns the specials from the menu."]:
-        return """
-        Special Soup: Clam Chowder
-        Special Salad: Cobb Salad
-        Special Drink: Chai Tea
-        """
-
-    @kernel_function(description="Provides the price of the requested menu item.")
-    def get_item_price(
-        self, menu_item: Annotated[str, "The name of the menu item."]
-    ) -> Annotated[str, "Returns the price of the menu item."]:
-        return "$9.99"
-
-
-# Simulate a conversation with the agent
+# Simulate a conversation
 USER_INPUTS = [
-    "Hello",
-    "What is the special soup?",
-    "What does that cost?",
-    "Thank you",
+    "Hi there!",
+    "I'm going to San Francisco tomorrow. What's the weather like?",
+    "How about Tokyo?",
+    "Thanks!",
 ]
 
-
 async def main():
-    # 1. Create the instance of the Kernel to register the plugin and service
     service_id = "agent"
     kernel = Kernel()
-    kernel.add_plugin(MenuPlugin(), plugin_name="menu")
-    kernel.add_service(AzureChatCompletion(service_id=service_id))
 
-    # 2. Configure the function choice behavior to auto invoke kernel functions
-    # so that the agent can automatically execute the menu plugin functions when needed
-    settings = kernel.get_prompt_execution_settings_from_service_id(service_id=service_id)
+    # ✅ Register the weather plugin
+    kernel.add_plugin(WeatherPlugin(api_key="0096719934824eaa9cc174930250704"), plugin_name="weather")
+
+    # ✅ Connect Azure OpenAI
+    kernel.add_service(
+        AzureChatCompletion(
+            service_id=service_id,
+            deployment_name="gpt-4o",  # <- Confirmed from your Azure portal
+            endpoint="https://azure-openai-rmb.openai.azure.com",
+            api_key="6CePy6190GsjZ7FSKU0fK1LNomKSJbjrCc0oTcYndfSEJvuBU2LbJQQJ99BDACYeBjFXJ3w3AAABACOGTn2s"
+        )
+    )
+
+    # Enable auto tool calls
+    settings = kernel.get_prompt_execution_settings_from_service_id(service_id)
     settings.function_choice_behavior = FunctionChoiceBehavior.Auto()
 
-    # 3. Create the agent
+    # Create the agent
     agent = ChatCompletionAgent(
         kernel=kernel,
-        name="Host",
-        instructions="Answer questions about the menu.",
+        name="TravelBot",
+        instructions=(
+            "You're a travel assistant that helps users plan for their trips. "
+            "You can answer questions about the weather using the weather plugin and give packing advice."
+        ),
         arguments=KernelArguments(settings=settings),
     )
 
-    # 4. Create a thread to hold the conversation
-    # If no thread is provided, a new thread will be
-    # created and returned with the initial response
+    # Chat loop
     thread: ChatHistoryAgentThread = None
-
     for user_input in USER_INPUTS:
         print(f"# User: {user_input}")
-        # 5. Invoke the agent for a response
         async for response in agent.invoke(messages=user_input, thread=thread):
             print(f"# {response.name}: {response}")
             thread = response.thread
 
-    # 6. Cleanup: Clear the thread
     await thread.delete() if thread else None
-
-    """
-    Sample output:
-    # User: Hello
-    # Host: Hello! How can I assist you today?
-    # User: What is the special soup?
-    # Host: The special soup is Clam Chowder.
-    # User: What does that cost?
-    # Host: The special soup, Clam Chowder, costs $9.99.
-    # User: Thank you
-    # Host: You're welcome! If you have any more questions, feel free to ask. Enjoy your day!
-    """
-
 
 if __name__ == "__main__":
     asyncio.run(main())
