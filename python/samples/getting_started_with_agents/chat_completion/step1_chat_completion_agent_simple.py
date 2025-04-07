@@ -26,10 +26,14 @@ USER_INPUTS = [
 async def main():
     # 1. Create the agent by specifying the service
     agent = ChatCompletionAgent(
-        service=AzureChatCompletion(),
-        name="Assistant",
-        instructions="Answer questions about the world in one sentence.",
-    )
+    service=AzureChatCompletion(
+        deployment_name="gpt-4o",  
+        endpoint="https://azure-openai-rmb.openai.azure.com",  
+        api_key="6CePy6190GsjZ7FSKU0fK1LNomKSJbjrCc0oTcYndfSEJvuBU2LbJQQJ99BDACYeBjFXJ3w3AAABACOGTn2s"  
+    ),
+    name="Assistant",
+    instructions="Answer questions about the world in one sentence.",
+)
 
     for user_input in USER_INPUTS:
         print(f"# User: {user_input}")
