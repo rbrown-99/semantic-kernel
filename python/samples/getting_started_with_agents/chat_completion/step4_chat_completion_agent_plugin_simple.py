@@ -46,7 +46,11 @@ USER_INPUTS = [
 async def main():
     # 1. Create the agent
     agent = ChatCompletionAgent(
-        service=AzureChatCompletion(),
+        service=AzureChatCompletion(
+        deployment_name="gpt-4o",  
+        endpoint="https://azure-openai-rmb.openai.azure.com",  
+        api_key="6CePy6190GsjZ7FSKU0fK1LNomKSJbjrCc0oTcYndfSEJvuBU2LbJQQJ99BDACYeBjFXJ3w3AAABACOGTn2s"  
+    ),
         name="Host",
         instructions="Answer questions about the menu.",
         plugins=[MenuPlugin()],
